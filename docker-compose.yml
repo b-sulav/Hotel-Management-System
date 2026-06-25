@@ -1,0 +1,126 @@
+services:
+  # Database
+  db:
+    image: mysql@sha256:7dcddc01f13bab2f15cde676d44d01f61fc9f99fe7785e86196dfc07d358ae2b
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: resort_db
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/db_root_password
+      MYSQL_USER: resort_app
+      MYSQL_PASSWORD_FILE: /run/secrets/db_app_password
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./database/resort_db.sql:/docker-entrypoint-initdb.d/resort_db.sql
+      - ./database/create_app_user.sql:/docker-entrypoint-initdb.d/create_app_user.sql
+    ports:
+      - "3307:3306"
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p$$(cat /run/secrets/db_root_password)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - resort-net
+    secrets:
+      - db_root_password
+      - db_app_password
+    command: --default-authentication-plugin=mysql_native_password
+
+  # Backend
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - DB_HOST=db
+      - DB_PORT=3306
+      - DB_USER=resort_app
+      - DB_PASSWORD_FILE=/run/secrets/db_app_password
+      - DB_NAME=resort_db
+      - ADMIN_SECRET_TOKEN_FILE=/run/secrets/admin_token
+      - DISABLE_DOCS=true
+      - ALLOWED_ORIGINS=https://rosyohospitality.com.np,https://www.rosyohospitality.com.np
+      - LOG_LEVEL=INFO
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - resort-net
+    secrets:
+      - db_app_password
+      - admin_token
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # Frontend
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./frontend/data:/usr/share/nginx/html/data:ro
+    depends_on:
+      - backend
+      - dashboard
+    networks:
+      - resort-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Dashboard
+  dashboard:
+    build: ./dashboard
+    restart: unless-stopped
+    environment:
+      - DB_HOST=db
+      - DB_PORT=3306
+      - DB_USER=resort_app
+      - DB_PASSWORD_FILE=/run/secrets/db_app_password
+      - DB_NAME=resort_db
+      - DASHBOARD_PASSWORD_FILE=/run/secrets/dashboard_password
+      - LOG_LEVEL=INFO
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - resort-net
+    secrets:
+      - db_app_password
+      - dashboard_password
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  db_data:
+
+networks:
+  resort-net:
+    driver: bridge
+
+secrets:
+  db_root_password:
+    file: ./secrets/db_root_password.txt
+  db_app_password:
+    file: ./secrets/db_app_password.txt
+  admin_token:
+    file: ./secrets/admin_token.txt
+  dashboard_password:
+    file: ./secrets/dashboard_password.txt

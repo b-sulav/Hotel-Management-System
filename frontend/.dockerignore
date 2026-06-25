@@ -1,0 +1,16 @@
+Dockerfile
+docker-compose.yml
+*.md
+.git
+.gitignore
+.env
+.env.*
+.venv
+venv
+__pycache__
+*.pyc
+*.log
+node_modules
+dist
+build
+*.map

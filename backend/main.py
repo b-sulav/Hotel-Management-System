@@ -91,8 +91,15 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+def _get_client_ip(request: Request) -> str:
+    xff = request.headers.get("X-Forwarded-For")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.client.host if request.client else "0.0.0.0"
+
+
 # Limits
-limiter = Limiter(key_func=get_remote_address)
+limiter = Limiter(key_func=_get_client_ip)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 

@@ -82,12 +82,13 @@ async def lifespan(app: FastAPI):
     logger.info("Natura Resort Booking API shut down.")
 
 
+_ENABLE_DOCS = os.getenv("ENABLE_API_DOCS", "").lower() == "true"
+
 app = FastAPI(
     title="Natura Resort Booking API",
     version="2.0.0",
-    # Disable docs
-    docs_url=None if os.getenv("DISABLE_DOCS", "").lower() == "true" else "/docs",
-    redoc_url=None if os.getenv("DISABLE_DOCS", "").lower() == "true" else "/redoc",
+    docs_url="/docs" if _ENABLE_DOCS else None,
+    redoc_url="/redoc" if _ENABLE_DOCS else None,
     lifespan=lifespan,
 )
 
@@ -106,7 +107,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # CORS
 _allowed_origins_env = os.getenv(
     "ALLOWED_ORIGINS",
-    "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5500,http://127.0.0.1:5500",
+    "https://rosyohospitality.com.np,https://www.rosyohospitality.com.np",
 )
 allowed_origins = [o.strip() for o in _allowed_origins_env.split(",") if o.strip()]
 

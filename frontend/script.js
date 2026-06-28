@@ -2,25 +2,8 @@
 
 // Config
 const RESORT_CONFIG = {
-    // Use relative
-    // or fall
-    // Priority: Docker
-    // file:// protocol
-    // 127.0.0.1:3000 ->
-    // non-localhost hostname
-    // localhost (any
-    API_BASE: (() => {
-        const { protocol, hostname, port } = window.location;
-        if (protocol === 'file:') return 'http://localhost:3000';
-        if (hostname === '127.0.0.1' && port === '3000') return 'http://localhost:3000';
-        // Docker frontend
-        if (hostname === 'localhost' && port === '8080') return '/api';
-        if (hostname !== 'localhost' && hostname !== '127.0.0.1') return '/api';
-        // Production with
-        if (hostname === 'localhost' || hostname === '127.0.0.1') return 'http://localhost:3000';
-        return '/api';
-    })(),
-    WHATSAPP_NUMBER:  '9779804262505',
+    API_BASE: '/api',
+    WHATSAPP_NUMBER: '9779804262505',
     WHATSAPP_MESSAGE: 'Hi, I have an inquiry!',
 };
 
@@ -673,7 +656,7 @@ bookingForm.addEventListener('submit', async (e) => {
     submitBtn.disabled    = true;
 
     try {
-        const response = await fetch(`${RESORT_CONFIG.API_BASE}/api/check-availability`, {
+        const response = await fetch(`${RESORT_CONFIG.API_BASE}/check-availability`, {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
             body:    JSON.stringify({ checkin: checkinInput.value, checkout: checkoutInput.value }),
@@ -993,7 +976,7 @@ guestDetailsForm.addEventListener('submit', async (e) => {
     submitBtn.disabled    = true;
 
     try {
-        const response = await fetch(`${RESORT_CONFIG.API_BASE}/api/reserve`, {
+        const response = await fetch(`${RESORT_CONFIG.API_BASE}/reserve`, {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
             body:    JSON.stringify(payload),

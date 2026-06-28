@@ -11,7 +11,7 @@ services:
     volumes:
       - db_data:/var/lib/mysql
       - ./database/resort_db.sql:/docker-entrypoint-initdb.d/resort_db.sql
-      - ./database/create_app_user.sql:/docker-entrypoint-initdb.d/create_app_user.sql
+      - ./database/z_create_app_user.sql:/docker-entrypoint-initdb.d/z_create_app_user.sql
     ports:
       - "127.0.0.1:3307:3306"
     healthcheck:

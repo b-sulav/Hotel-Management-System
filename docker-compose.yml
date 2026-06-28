@@ -68,7 +68,9 @@ services:
 
   # Frontend
   frontend:
-    build: ./frontend
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
     restart: unless-stopped
     ports:
       - "80:80"

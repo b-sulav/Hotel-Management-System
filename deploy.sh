@@ -3,7 +3,7 @@ set -euo pipefail
 
 HYDROP_IP="${1:-142.93.209.85}"
 SSH_USER="${2:-root}"
-PROJECT_DIR="/opt/hotel-system/Hotel-Management-System"
+PROJECT_DIR="/root/Hotel-Management-System"
 LOCAL_DIR="$(pwd)"
 ARCHIVE_NAME="hotel-system-deploy.tar.gz"
 
@@ -88,7 +88,7 @@ else
   ssh "${SSH_FLAGS[@]}" "${SSH_USER}@${HYDROP_IP}" bash -euxo pipefail <<'REMOTE'
 set -euo pipefail
 ARCHIVE_NAME="hotel-system-deploy.tar.gz"
-PROJECT_DIR="/opt/hotel-system/Hotel-Management-System"
+PROJECT_DIR="/root/Hotel-Management-System"
 mkdir -p "$PROJECT_DIR"
 tar -xzf "/tmp/${ARCHIVE_NAME}" -C "$PROJECT_DIR"
 rm -f "/tmp/${ARCHIVE_NAME}"
@@ -99,7 +99,7 @@ fi
 # --- Ensure target directory exists and ownership is correct ---
 ssh "${SSH_FLAGS[@]}" "${SSH_USER}@${HYDROP_IP}" bash -euxo pipefail <<'REMOTE'
 set -euo pipefail
-PROJECT_DIR="/opt/hotel-system/Hotel-Management-System"
+PROJECT_DIR="/root/Hotel-Management-System"
 mkdir -p "$PROJECT_DIR"
 # Ensure nginx/ssl directory exists even if empty (prevents startup crash)
 mkdir -p "$PROJECT_DIR/nginx/ssl"
@@ -153,7 +153,7 @@ ok "Docker & Compose ready on droplet."
 log "Deploying stack ..."
 ssh "${SSH_FLAGS[@]}" "${SSH_USER}@${HYDROP_IP}" bash -euxo pipefail <<'REMOTE'
 set -euo pipefail
-PROJECT_DIR="/opt/hotel-system/Hotel-Management-System"
+PROJECT_DIR="/root/Hotel-Management-System"
 cd "$PROJECT_DIR"
 
 # Stop & remove old stack (ignore if nothing running)
@@ -182,7 +182,7 @@ ok "Stack started."
 log "Running smoke tests ..."
 ssh "${SSH_FLAGS[@]}" "${SSH_USER}@${HYDROP_IP}" bash -euxo pipefail <<'REMOTE'
 set -euo pipefail
-PROJECT_DIR="/opt/hotel-system/Hotel-Management-System"
+PROJECT_DIR="/root/Hotel-Management-System"
 cd "$PROJECT_DIR"
 sleep 5
 # Frontend nginx health (returns 200 even without valid SSL on port 80)

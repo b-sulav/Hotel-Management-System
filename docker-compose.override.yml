@@ -1,0 +1,4 @@
+services:
+  dashboard:
+    ports: 
+      - "8501:8501"

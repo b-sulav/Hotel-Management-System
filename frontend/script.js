@@ -136,6 +136,15 @@ menuToggle.addEventListener('click', () => {
     menuToggle.classList.toggle('active', isActive);
     menuToggle.setAttribute('aria-expanded', String(isActive));
     nav.style.background = isActive ? 'var(--primary-green)' : '';
+    if (isActive) {
+        lockBodyScroll();
+        document.body.classList.add('menu-open');
+        document.documentElement.classList.add('menu-open');
+    } else {
+        unlockBodyScroll();
+        document.body.classList.remove('menu-open');
+        document.documentElement.classList.remove('menu-open');
+    }
 });
 
 navLinksArr.forEach(link => {
@@ -143,6 +152,9 @@ navLinksArr.forEach(link => {
         menuToggle.classList.remove('active');
         menuToggle.setAttribute('aria-expanded', 'false');
         navContent.classList.remove('active');
+        unlockBodyScroll();
+        document.body.classList.remove('menu-open');
+        document.documentElement.classList.remove('menu-open');
         if (window.scrollY <= 50) nav.style.background = 'transparent';
     });
 });
@@ -187,6 +199,8 @@ window.addEventListener('scroll', () => {
 
     document.querySelector('.prev-btn')?.addEventListener('click', () => go(current - 1));
     document.querySelector('.next-btn')?.addEventListener('click', () => go(current + 1));
+
+    setInterval(() => go(current + 1), 3000);
 })();
 
 // DOM references
@@ -245,6 +259,9 @@ document.querySelectorAll('.open-wizard-trigger').forEach(trigger => {
         menuToggle?.classList.remove('active');
         menuToggle?.setAttribute('aria-expanded', 'false');
         navContent?.classList.remove('active');
+        unlockBodyScroll();
+        document.body.classList.remove('menu-open');
+        document.documentElement.classList.remove('menu-open');
         openWizard();
     });
 });

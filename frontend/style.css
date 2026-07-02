@@ -18,6 +18,7 @@
     margin: 0;
     padding: 0;
     box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
 }
 
 html {
@@ -155,7 +156,7 @@ nav.scrolled .logo-btn .resort-text { color: var(--accent-red); }
     height: 100vh;
     min-height: 100svh;
     background: linear-gradient(rgba(27, 67, 50, 0.6), rgba(27, 67, 50, 0.8)),
-                url('hero.png');
+                url('hero.webp');
     /* No tile */
     background-repeat: no-repeat; 
     /* Cover */
@@ -163,7 +164,6 @@ nav.scrolled .logo-btn .resort-text { color: var(--accent-red); }
     /* Center */
     background-position: center; 
     
-    background-attachment: fixed;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -404,13 +404,13 @@ nav.scrolled .logo-btn .resort-text { color: var(--accent-red); }
     display: grid;
     grid-template-columns: repeat(6, 1fr);
     grid-auto-rows: 300px;
-    gap: 20px;
+    gap: 24px;
 }
 
 .gallery-item {
     position: relative;
     overflow: hidden;
-    border-radius: 8px;
+    border-radius: 4px;
     box-shadow: 0 12px 35px rgba(0,0,0,0.3);
 }
 
@@ -559,7 +559,7 @@ nav.scrolled .logo-btn .resort-text { color: var(--accent-red); }
 .reveal {
     opacity: 0;
     transform: translateY(40px);
-    transition: all 0.8s ease;
+    transition: opacity 0.8s ease, transform 0.8s ease;
 }
 
 .reveal.active { opacity: 1; transform: translateY(0); }
@@ -1348,7 +1348,7 @@ nav.scrolled .logo-btn .resort-text { color: var(--accent-red); }
 
 .btn-book-action:hover {
     background-color: var(--hover-red);
-    box-shadow: 0 8px 15px rgba(193, 18, 31, 0.2);
+    box-shadow: 0 8px 15px rgba(165, 20, 42, 0.2);
 }
 
 .btn-footer-proceed { width: 100%; padding: 13px 20px; font-size: 0.9rem; }
@@ -1752,7 +1752,7 @@ nav.scrolled .logo-btn .resort-text { color: var(--accent-red); }
     .room-info { padding: 18px 20px; }
     .room-info h3 { font-size: 1.3rem; }
     .amenities-gallery { grid-template-columns: 1fr; grid-auto-rows: 200px; gap: 18px; }
-    .amenities-gallery .gallery-item { box-shadow: none; }
+    .amenities-gallery .gallery-item { box-shadow: none; border-radius: 12.5px; }
     .amenities-gallery .gallery-overlay { opacity: 1; transition: none; padding: 20px 15px 10px 15px; background: none; }
     .amenities-gallery .gallery-overlay h4 { transform: none; transition: none; margin: 6px 6px 2px 0; font-size: 1.2rem; text-shadow: 0 2px 4px rgba(0,0,0,0.5); }
     .amenities-gallery .gallery-item:nth-child(odd) .gallery-overlay { align-items: flex-start; }
@@ -1810,7 +1810,7 @@ nav.scrolled .logo-btn .resort-text { color: var(--accent-red); }
     .menu-toggle.active span:nth-child(3) { transform: translateY(-10px) rotate(-45deg); }
     .hero-content { padding: 0 6px; }
     .hero {
-        background-image: linear-gradient(rgba(27, 67, 50, 0.6), rgba(27, 67, 50, 0.8)), url('hero1.png');
+        background-image: linear-gradient(rgba(27, 67, 50, 0.6), rgba(27, 67, 50, 0.8)), url('hero1.webp');
     }
     .btn-book.large { padding: 11px 22px; font-size: 14px; }
     .section { padding: 44px 14px; }

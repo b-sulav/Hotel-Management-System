@@ -1,5 +1,4 @@
 services:
-  # Database
   db:
     image: mysql@sha256:7dcddc01f13bab2f15cde676d44d01f61fc9f99fe7785e86196dfc07d358ae2b
     restart: unless-stopped
@@ -12,6 +11,7 @@ services:
       - db_data:/var/lib/mysql
       - ./database/resort_db.sql:/docker-entrypoint-initdb.d/resort_db.sql
       - ./database/z_create_app_user.sql:/docker-entrypoint-initdb.d/z_create_app_user.sql
+      - ./database/mysql.cnf:/etc/mysql/conf.d/mysql.cnf:ro
     ports:
       - "127.0.0.1:3307:3306"
     healthcheck:
@@ -26,12 +26,7 @@ services:
       - db_root_password
       - db_app_password
     command: --default-authentication-plugin=mysql_native_password
-    deploy:
-      resources:
-        limits:
-          memory: 512M
 
-  # Backend
   backend:
     build: ./backend
     restart: unless-stopped
@@ -47,6 +42,7 @@ services:
       - DISABLE_DOCS=true
       - ALLOWED_ORIGINS=https://rosyohospitality.com.np,https://www.rosyohospitality.com.np
       - LOG_LEVEL=INFO
+      - DB_POOL_SIZE=5
     depends_on:
       db:
         condition: service_healthy
@@ -61,12 +57,7 @@ services:
       timeout: 10s
       retries: 3
       start_period: 20s
-    deploy:
-      resources:
-        limits:
-          memory: 256M
 
-  # Frontend
   frontend:
     build:
       context: .
@@ -92,12 +83,7 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
-    deploy:
-      resources:
-        limits:
-          memory: 128M
 
-  # Dashboard
   dashboard:
     build: ./dashboard
     restart: unless-stopped
@@ -109,6 +95,7 @@ services:
       - DB_NAME=resort_db
       - DASHBOARD_PASSWORD_FILE=/run/secrets/dashboard_password
       - LOG_LEVEL=INFO
+      - DB_POOL_SIZE=3
     depends_on:
       db:
         condition: service_healthy
@@ -123,10 +110,28 @@ services:
       timeout: 10s
       retries: 3
       start_period: 20s
-    deploy:
-      resources:
-        limits:
-          memory: 384M
+
+  db-cron:
+    image: mysql@sha256:7dcddc01f13bab2f15cde676d44d01f61fc9f99fe7785e86196dfc07d358ae2b
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - resort-net
+    secrets:
+      - db_root_password
+    volumes:
+      - db_data:/var/lib/mysql:ro
+      - ./database:/scripts:ro
+    environment:
+      MYSQL_HOST: db
+      MYSQL_USER: root
+      MYSQL_PASSWORD_FILE: /run/secrets/db_root_password
+    entrypoint: ["/bin/sh"]
+    command: ["-c", "sleep 5 && mysql -h db -u root -p$$(cat /run/secrets/db_root_password) resort_db -e 'SELECT 1 AS cron_test;'"]
+    # schedule archiving and backups manually or via host cron:
+    #   ssh root@vps 'docker compose -f /root/Hotel-Management-System/docker-compose.yml run --rm db-cron'
 
 volumes:
   db_data:

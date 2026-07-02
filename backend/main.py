@@ -13,7 +13,7 @@ import pytz
 import mysql.connector
 from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, EmailStr, field_validator, model_validator
+from pydantic import BaseModel, field_validator, model_validator
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -58,6 +58,8 @@ if not _ADMIN_TOKEN or _ADMIN_TOKEN == _ADMIN_TOKEN_PLACEHOLDER:
 _NEPAL_TZ = pytz.timezone("Asia/Kathmandu")
 CHECKOUT_TIME = dt_time(12, 0, 0)
 CHECKOUT_TIME_DISPLAY = "12:00 PM NST"
+CHECKIN_TIME = dt_time(12, 0, 1)
+CHECKIN_TIME_DISPLAY = "2:00 PM NST"
 
 
 def now_nepal() -> datetime:
@@ -70,6 +72,10 @@ def today_nepal() -> date:
 
 def is_past_checkout_time() -> bool:
     return now_nepal().time() >= CHECKOUT_TIME
+
+
+def is_past_checkin_time() -> bool:
+    return now_nepal().time() >= CHECKIN_TIME
 
 
 # Lifecycle
@@ -190,7 +196,7 @@ class AvailabilityRequest(BaseModel):
 
 class GuestInfo(BaseModel):
     full_name: str
-    email: EmailStr
+    email: str | None = None
     phone: str
 
     @field_validator("full_name")
@@ -199,6 +205,18 @@ class GuestInfo(BaseModel):
         v = v.strip()
         if not v or len(v) > 100:
             raise ValueError("Full name must be between 1 and 100 characters.")
+        return v
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        v = v.strip()
+        if not v:
+            return None
+        if "@" not in v or "." not in v:
+            raise ValueError("Invalid email format.")
         return v
 
     @field_validator("phone")
@@ -245,55 +263,153 @@ def run_auto_checkout(cursor) -> int:
     Mark overdue reservations as completed and synchronise room statuses.
     Returns the total number of reservations completed.
     """
-    today = today_nepal()
+    now = now_nepal()
+    today = now.date()
+    checkout_now = now.time()
 
     cursor.execute(
-        "UPDATE reservations SET reservation_status = 'completed' "
+        "UPDATE reservations SET reservation_status = 'completed', checkout_time = %s "
         "WHERE check_out_date < %s AND reservation_status IN ('pending', 'active')",
-        (today,),
+        (checkout_now, today),
     )
     past_due = cursor.rowcount
 
     today_checkouts = 0
+    print(f"[turnover:backend] now={now}, today={today}, past_due={past_due}, today_checkouts={today_checkouts}")
     if is_past_checkout_time():
         cursor.execute(
-            "UPDATE reservations SET reservation_status = 'completed' "
-            "WHERE check_out_date = %s AND reservation_status IN ('pending', 'active')",
-            (today,),
+            "UPDATE reservations SET reservation_status = 'completed', checkout_time = %s "
+            "WHERE check_out_date = %s AND reservation_status = 'active'",
+            (checkout_now, today),
         )
         today_checkouts = cursor.rowcount
 
+        # Turnover: completed rooms go to occupied if same-day pending/active exists, else available
+        cursor.execute("""
+            UPDATE rooms r
+            LEFT JOIN reservations res ON res.room_id = r.room_id
+                AND res.reservation_status IN ('pending', 'active')
+                AND res.check_in_date <= %s
+                AND res.check_out_date >= %s
+            SET r.status = CASE WHEN res.room_id IS NOT NULL THEN 'occupied' ELSE 'available' END
+        """, (today, today))
+        print(f"[turnover:backend] room sync updated={cursor.rowcount}")
+
+        # Activate pending reservations that now have an occupied room
+        cursor.execute("""
+            UPDATE reservations res
+            JOIN rooms r ON r.room_id = res.room_id
+            SET res.reservation_status = 'active'
+            WHERE res.reservation_status = 'pending'
+              AND res.check_in_date <= %s
+              AND r.status = 'occupied'
+        """, (today,))
+
+    # At 2PM, activate any remaining pending reservations for rooms already occupied
+    if is_past_checkin_time():
+        cursor.execute(
+            """
+                UPDATE reservations r JOIN rooms rm ON rm.room_id = r.room_id
+                SET r.reservation_status = 'active', rm.status = 'occupied'
+                WHERE r.check_in_date = %s AND r.reservation_status = 'pending'
+                  AND rm.status = 'occupied'
+                """,
+            (today,),
+        )
+
     total_completed = past_due + today_checkouts
 
-    # Free rooms
+    # Cleanup rooms with no active/pending reservations
     cursor.execute(
         """
-        UPDATE rooms r SET r.status = 'available'
-        WHERE r.status = 'occupied'
+        UPDATE rooms r
+        SET r.status = 'available'
+        WHERE r.status IN ('available', 'maintenance')
           AND NOT EXISTS (
               SELECT 1 FROM reservations res
               WHERE res.room_id = r.room_id
                 AND res.reservation_status IN ('pending', 'active')
-                AND res.check_in_date <= %s
-                AND res.check_out_date > %s
           )
-        """,
-        (today, today),
+        """
     )
-
-    # Activate pending
-    if is_past_checkout_time():
-        cursor.execute(
-            """
-            UPDATE reservations r JOIN rooms rm ON rm.room_id = r.room_id
-            SET r.reservation_status = 'active', rm.status = 'occupied'
-            WHERE r.check_in_date = %s AND r.reservation_status = 'pending'
-            """,
-            (today,),
-        )
 
     return total_completed
 
+
+
+
+def run_archive_old(cursor, days: int = 90) -> dict:
+    """
+    Move completed/cancelled reservations older than `days` days
+    into reservation_archives as compressed JSON snapshots.
+    Returns counts.
+    """
+    from datetime import timedelta
+    import json
+
+    cutoff = today_nepal() - timedelta(days=days)
+
+    cursor.execute("""
+        SELECT r.reservation_id, r.room_id, r.guest_id, r.guest_name,
+               r.check_in_date, r.check_out_date, r.checkout_time,
+               r.reservation_status, r.created_at, r.updated_at,
+               g.full_name AS guest_full_name, g.email AS guest_email, g.phone AS guest_phone, g.created_at AS guest_created,
+               rm.room_number, rt.type_name AS room_type, rt.price AS room_price, rt.capacity AS room_capacity
+        FROM reservations r
+        JOIN guests g ON g.guest_id = r.guest_id
+        JOIN rooms rm ON rm.room_id = r.room_id
+        JOIN room_types rt ON rt.room_type_id = rm.room_type_id
+        WHERE r.reservation_status IN ('completed', 'cancelled')
+          AND r.check_out_date < %s
+        ORDER BY r.check_out_date ASC
+        LIMIT 5000
+    """, (cutoff,))
+
+    rows = cursor.fetchall()
+    archived = 0
+    deleted = 0
+
+    for row in rows:
+        reservation_json = {
+            "reservation_id": row["reservation_id"],
+            "room_id": row["room_id"],
+            "guest_id": row["guest_id"],
+            "guest_name": row["guest_name"],
+            "check_in_date": str(row["check_in_date"]),
+            "check_out_date": str(row["check_out_date"]),
+            "checkout_time": str(row["checkout_time"]) if row["checkout_time"] else None,
+            "reservation_status": row["reservation_status"],
+            "created_at": str(row["created_at"]),
+            "updated_at": str(row["updated_at"]),
+        }
+        guest_snapshot = {
+            "guest_id": row["guest_id"],
+            "full_name": row["guest_full_name"],
+            "email": row["guest_email"],
+            "phone": row["guest_phone"],
+            "created_at": str(row["guest_created"]),
+        }
+        room_snapshot = {
+            "room_id": row["room_id"],
+            "room_number": row["room_number"],
+            "room_type": row["room_type"],
+            "room_price": float(row["room_price"]) if row["room_price"] else 0.0,
+            "room_capacity": row["room_capacity"],
+        }
+        cursor.execute("""
+            INSERT INTO reservation_archives (reservation_data, guest_snapshot, room_snapshot, archive_reason)
+            VALUES (%s, %s, %s, %s)
+        """, (
+            json.dumps(reservation_json, ensure_ascii=False),
+            json.dumps(guest_snapshot, ensure_ascii=False),
+            json.dumps(room_snapshot, ensure_ascii=False),
+            "completed_aged" if row["reservation_status"] == "completed" else "cancelled_aged",
+        ))
+        archived += 1
+        cursor.execute("DELETE FROM reservations WHERE reservation_id = %s", (row["reservation_id"],))
+        deleted += 1
+
+    return {"archived": archived, "deleted": deleted, "cutoff_days": days}
 
 def find_all_available_rooms(
     cursor, checkin: date, checkout: date, lock_for_update: bool = False
@@ -316,6 +432,90 @@ def find_all_available_rooms(
     cursor.execute(query, (checkout, checkin))
     return cursor.fetchall()
 
+
+
+
+# =====================
+# Admin archive route
+# =====================
+@app.post("/api/admin/archive-old")
+@limiter.limit("10/minute")
+async def admin_archive_old(request: Request, db=Depends(get_db)):
+    provided = request.headers.get("X-Admin-Token", "")
+    if not _verify_admin_token(provided):
+        raise HTTPException(status_code=403, detail="Forbidden.")
+
+    cursor = db.cursor(dictionary=True)
+    try:
+        import json as _json
+        body_bytes = await request.body()
+        body = _json.loads(body_bytes.decode() or "{}")
+        days = int(body.get("days", 90))
+        if not (1 <= days <= 3650):
+            raise HTTPException(status_code=422, detail="Days must be between 1 and 3650.")
+
+        result = run_archive_old(cursor, days=days)
+        db.commit()
+        logger.info(
+            "Admin archive: archived=%d deleted=%d cutoff=%dd",
+            result["archived"], result["deleted"], days,
+        )
+        return {"status": "ok", **result}
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error("Admin archive error: %s", e)
+        raise HTTPException(status_code=500, detail="Archive processing error.")
+    finally:
+        cursor.close()
+
+# =====================
+# Stats / monitoring
+# =====================
+@app.get("/api/admin/stats")
+@limiter.limit("30/minute")
+def admin_stats(request: Request, db=Depends(get_db)):
+    provided = request.headers.get("X-Admin-Token", "")
+    if not _verify_admin_token(provided):
+        raise HTTPException(status_code=403, detail="Forbidden.")
+
+    from datetime import timedelta
+
+    cursor = db.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT
+                (SELECT COUNT(*) FROM reservations)                         AS live_reservations,
+                (SELECT COUNT(*) FROM guests)                               AS total_guests,
+                (SELECT COUNT(*) FROM reservations
+                 WHERE reservation_status IN ('pending','active'))         AS active_reservations,
+                (SELECT COUNT(*) FROM reservations
+                 WHERE reservation_status IN ('completed','cancelled'))    AS closed_reservations,
+                (SELECT COUNT(*) FROM reservation_archives)                 AS archived_reservations,
+                (SELECT COALESCE(SUM(CHAR_LENGTH(reservation_data)), 0)
+                 FROM reservation_archives)                                AS archive_bytes,
+                (SELECT COALESCE(SUM(
+                    CHAR_LENGTH(guest_name) +
+                    CHAR_LENGTH(COALESCE(email, '')) +
+                    CHAR_LENGTH(phone)
+                ), 0) FROM reservations)                                    AS live_guest_bytes_approx
+        """)
+        stats = cursor.fetchone()
+
+        cursor.execute("""
+            SELECT COUNT(*) AS cnt
+            FROM reservations
+            WHERE reservation_status IN ('completed', 'cancelled')
+              AND check_out_date < %s
+        """, (today_nepal() - timedelta(days=60),))
+        row = cursor.fetchone()
+        suggestion = "archive" if row and row.get("cnt", 0) > 500 else "ok"
+
+        return {"status": "ok", "stats": stats, "suggestion": suggestion}
+    finally:
+        cursor.close()
 
 def _verify_admin_token(provided: str) -> bool:
     """Constant-time comparison to prevent timing attacks."""
@@ -446,9 +646,7 @@ def create_reservation(request: Request, req: ReservationRequest, db=Depends(get
             INSERT INTO guests (full_name, email, phone)
             VALUES (%s, %s, %s)
             ON DUPLICATE KEY UPDATE
-                guest_id = LAST_INSERT_ID(guest_id),
-                full_name = VALUES(full_name),
-                phone = VALUES(phone)
+                guest_id = LAST_INSERT_ID(guest_id)
             """,
             (req.guest.full_name, req.guest.email, req.guest.phone),
         )
@@ -475,14 +673,35 @@ def create_reservation(request: Request, req: ReservationRequest, db=Depends(get
         today = today_nepal()
 
         for room in assigned_rooms:
-            initial_status = "active" if req.checkin == today else "pending"
+            # Final in-transaction overlap guard with row locking
+            cursor.execute(
+                """
+                SELECT 1 FROM reservations
+                WHERE room_id = %s
+                  AND reservation_status IN ('pending', 'active')
+                  AND check_in_date < %s AND check_out_date > %s
+                FOR UPDATE
+                """,
+                (room["room_id"], req.checkout, req.checkin),
+            )
+            if cursor.fetchone():
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Room {room['room_number']} was just booked by another request for these dates.",
+                )
+
+            if req.checkin == today:
+                initial_status = "active" if now_nepal().time() >= CHECKIN_TIME else "pending"
+            else:
+                initial_status = "pending"
             cursor.execute(
                 "INSERT INTO reservations "
-                "(room_id, guest_id, check_in_date, check_out_date, checkout_time, reservation_status) "
-                "VALUES (%s, %s, %s, %s, %s, %s)",
+                "(room_id, guest_id, guest_name, check_in_date, check_out_date, checkout_time, reservation_status) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s)",
                 (
                     room["room_id"],
                     guest_id,
+                    req.guest.full_name,
                     req.checkin,
                     req.checkout,
                     CHECKOUT_TIME,

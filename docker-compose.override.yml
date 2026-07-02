@@ -1,4 +1,29 @@
+
+version: '3.8'
+
 services:
+  # Backend
+  backend:
+    volumes:
+      # Mount your local backend folder to the container's working directory
+      - ./backend:/app 
+    # Change environment variable locally if you want verbose logs while debugging
+    environment:
+      - LOG_LEVEL=DEBUG
+    # If using Node.js, override to a file watcher. Adjust if it's Python/Go:
+    # command: npx nodemon server.js 
+
+  # Frontend
+  frontend:
+    volumes:
+      # Overrides the static Nginx view to reflect your local frontend workspace directly
+      - ./frontend:/usr/share/nginx/html:ro
+
+  # Dashboard (Streamlit automatically reloads when files change!)
   dashboard:
-    ports: 
+    ports:
+      # Expose the dashboard port directly to your host machine (http://localhost:8501)
       - "8501:8501"
+    volumes:
+      # Mounts your dashboard source files 
+      - ./dashboard:/app

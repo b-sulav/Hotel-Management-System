@@ -1,0 +1,63 @@
+{
+  "page": "Hotel Reservation Booking",
+  "form": {
+    "id": "bookingForm",
+    "action": "Fast reservation booking wizard",
+    "fields": [
+      {
+        "id": "checkinBtn",
+        "type": "datepicker",
+        "label": "Check-in Date",
+        "input_id": "checkin",
+        "required": true
+      },
+      {
+        "id": "checkoutBtn",
+        "type": "datepicker",
+        "label": "Check-out Date",
+        "input_id": "checkout",
+        "required": true
+      },
+      {
+        "id": "roomGuests1",
+        "type": "select",
+        "label": "Guests",
+        "options": [
+          "1 Adult",
+          "2 Adults",
+          "3 Adults"
+        ],
+        "required": true
+      },
+      {
+        "id": "addRoomOptionBtn",
+        "type": "button",
+        "label": "Add Another Room",
+        "action": "add_room"
+      }
+    ],
+    "submit": {
+      "id": "",
+      "text": "Check Availability \u2192",
+      "type": "submit"
+    }
+  },
+  "steps": [
+    {
+      "order": 1,
+      "name": "DATES",
+      "description": "Check-in, Check-out, Guests"
+    },
+    {
+      "order": 2,
+      "name": "ROOMS",
+      "description": "Room selection"
+    },
+    {
+      "order": 3,
+      "name": "DETAILS",
+      "description": "Guest details & confirmation"
+    }
+  ],
+  "note": "Captured via browser after clicking Book Now in the booking wizard."
+}

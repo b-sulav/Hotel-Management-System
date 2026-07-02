@@ -200,7 +200,7 @@ window.addEventListener('scroll', () => {
     document.querySelector('.prev-btn')?.addEventListener('click', () => go(current - 1));
     document.querySelector('.next-btn')?.addEventListener('click', () => go(current + 1));
 
-    setInterval(() => go(current + 1), 3000);
+    setInterval(() => go(current + 1), 5000);
 })();
 
 // DOM references
@@ -812,10 +812,10 @@ function renderRoomGrid(currentRoom) {
         visibleCount++;
 
         const nameLower = roomType.type_name?.toLowerCase() || '';
-        let roomImage = 'singleroom.png';
+        let roomImage = 'singleroom.webp';
         let roomKey   = 'single';
-        if (nameLower.includes('twin'))   { roomImage = 'doubleroom.png'; roomKey = 'twin'; }
-        if (nameLower.includes('triple')) { roomImage = 'tripleroom.png'; roomKey = 'triple'; }
+        if (nameLower.includes('twin'))   { roomImage = 'doubleroom.webp'; roomKey = 'twin'; }
+        if (nameLower.includes('triple')) { roomImage = 'tripleroom.webp'; roomKey = 'triple'; }
 
         const details    = roomDetails[roomKey];
         const isSelected = selections[activeTabId] === roomType.room_type_id;
@@ -828,7 +828,7 @@ function renderRoomGrid(currentRoom) {
         const imageFrame = document.createElement('div');
         imageFrame.className = 'room-image-frame';
         const img = document.createElement('img');
-        img.src     = 'data/' + roomImage;
+        img.src = roomImage;
         img.alt     = roomType.type_name;
         img.loading = 'lazy';
         imageFrame.appendChild(img);
@@ -972,13 +972,15 @@ guestDetailsForm.addEventListener('submit', async (e) => {
     }
 
     const fullName = document.getElementById('fullName').value.trim();
-    const email    = document.getElementById('email').value.trim();
     const phone    = document.getElementById('phone').value.trim();
+    const email    = (document.getElementById('email') || {}).value?.trim() || '';
 
-    // Basic client-side
+    // Basic client-side validation
     if (!fullName) { alert('Please enter your full name.'); return; }
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { alert('Please enter a valid email address.'); return; }
-    if (!phone)    { alert('Please enter your phone number.'); return; }
+    if (!phone || !/^[\d\s\+\-()]{7,20}$/.test(phone)) {
+        alert('Please enter a valid phone number.');
+        return;
+    }
 
     const payload = {
         checkin:       checkinInput.value,
